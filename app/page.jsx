@@ -868,122 +868,121 @@ function RatingModal({ onClose, onRate, viagem }) {
 }
 
 /* ============================================================================
-   DANFE REALISTA 2.0 (ORGANIZADO & COM BARRA DE AÇÕES)
+   NOVO COMPONENTE DANFE REALISTA
 ============================================================================ */
 function DanfeRealista({ viagem, users, veiculos, onClose }) {
-  const cliente = users.find(u => u.id === Number(viagem.clienteId)) || { name: "Consumidor Final", cnpj: "000.000.000-00" };
+  const cliente = users.find(u => u.id === Number(viagem.clienteId)) || { name: "Consumidor Final", cnpj: "000.000.000-00", company: "Consumidor" };
   const motorista = users.find(u => u.id === Number(viagem.motoristaId));
   const veiculoInfo = veiculos.find(v => v.placa === viagem.veiculo);
-  const nfeNum = `000.${String(viagem.id).padStart(3, '0')}.${String(viagem.id * 2).padStart(3, '0')}`;
   
-  // CSS Específico para este componente (Scoped visualmente)
-  const danfeStyles = {
-    overlay: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '20px 0' },
-    toolbar: { background: '#1e293b', width: '210mm', padding: '10px 20px', borderRadius: '8px 8px 0 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'white' },
-    paper: { width: '210mm', minHeight: '297mm', background: 'white', padding: '10mm', position: 'relative', boxSizing: 'border-box', boxShadow: '0 0 20px rgba(0,0,0,0.5)', overflow: 'hidden' },
-    row: { display: 'flex', border: '1px solid #000', borderBottom: 'none' },
-    col: (flex = 1) => ({ flex, padding: 2, borderRight: '1px solid #000', fontSize: 10, overflow: 'hidden' }),
-    label: { fontSize: 7, fontWeight: 'bold', color: '#555', textTransform: 'uppercase', display: 'block' },
-    value: { fontSize: 10, fontWeight: 'bold', color: '#000', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }
-  };
+  const nfeNum = `000.${String(viagem.id).padStart(3, '0')}.${String(viagem.id * 2).padStart(3, '0')}`;
+  const chave = `3523 12${String(Math.random()).slice(2,16)} 55 001 000.000.123-00`;
+  const barcode128 = `|| ||| | || ||| || || | || |||| ||| ||`; // Representação visual simples
 
   return (
-    <div style={danfeStyles.overlay}>
-      {/* BARRA DE FERRAMENTAS (Não sai na impressão) */}
-      <div className="no-print" style={danfeStyles.toolbar}>
-        <div style={{display:'flex', alignItems:'center', gap: 10}}>
-           <span>📄 Visualização de Impressão</span>
-        </div>
-        <div style={{display:'flex', gap: 10}}>
-          <button onClick={() => window.print()} style={{background: '#3b82f6', border: 'none', color: 'white', padding: '8px 16px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold'}}>🖨️ IMPRIMIR</button>
-          <button onClick={onClose} style={{background: '#ef4444', border: 'none', color: 'white', padding: '8px 16px', borderRadius: 4, cursor: 'pointer', fontWeight: 'bold'}}>✕ FECHAR</button>
-        </div>
-      </div>
-
-      {/* ÁREA IMPRESSA (Folha A4) */}
-      <div className="printable-area" style={danfeStyles.paper}>
+    <div style={{...styles.modal, overflowY:'auto', background: 'rgba(0,0,0,0.8)'}}>
+      <div style={{width: '210mm', minHeight: '297mm', background:'white', padding: '10mm', position:'relative', boxSizing: 'border-box'}} className="printable-area" onClick={e => e.stopPropagation()}>
         
         {/* CANHOTO */}
-        <div style={{...danfeStyles.row, height: 25}}>
-          <div style={{...danfeStyles.col(8)}}>
-            <span style={danfeStyles.label}>RECEBEMOS DE CAIOLOG OS PRODUTOS CONSTANTES DA NOTA FISCAL INDICADA AO LADO</span>
+        <div style={{border: '1px solid #000', marginBottom: 10, display: 'flex', height: 25}}>
+          <div style={{flex: 4, borderRight: '1px solid #000', padding: 2}}>
+            <span className="danfe-label">RECEBEMOS DE CAIOLOG OS PRODUTOS CONSTANTES DA NOTA FISCAL INDICADA AO LADO</span>
           </div>
-          <div style={{...danfeStyles.col(2), borderRight: 'none', textAlign:'center'}}>
-            <strong style={{fontSize: 14}}>NF-e</strong><br/>Nº {nfeNum}
+          <div style={{flex: 1, textAlign: 'center', padding: 2}}>
+            <strong style={{fontSize: 12}}>NF-e</strong><br/>
+            <span style={{fontSize: 10}}>Nº {nfeNum}</span>
           </div>
         </div>
-        <div style={{...danfeStyles.row, borderBottom: '1px solid #000', marginBottom: 15}}>
-          <div style={danfeStyles.col(2)}><span style={danfeStyles.label}>DATA DE RECEBIMENTO</span></div>
-          <div style={{...danfeStyles.col(8), borderRight: 'none'}}><span style={danfeStyles.label}>IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR</span></div>
+        <div style={{display: 'flex', gap: 10, marginBottom: 10}}>
+          <div style={{flex: 1, border: '1px solid #000', height: 25, padding: 2}}>
+             <span className="danfe-label">DATA DE RECEBIMENTO</span>
+          </div>
+          <div style={{flex: 3, border: '1px solid #000', height: 25, padding: 2}}>
+             <span className="danfe-label">IDENTIFICAÇÃO E ASSINATURA DO RECEBEDOR</span>
+          </div>
         </div>
 
-        {/* EMITENTE */}
-        <div style={{...danfeStyles.row, height: 110, borderBottom: '1px solid #000'}}>
-           <div style={{...danfeStyles.col(4), display:'flex', alignItems:'center', justifyContent:'center'}}>
-              <h2 style={{margin:0, fontSize:24, fontWeight:900}}>CAIOLOG</h2>
+        {/* PONTILHADO */}
+        <div style={{borderTop: '1px dashed #000', margin: '15px 0'}}></div>
+
+        {/* CABEÇALHO */}
+        <div style={{display: 'flex', border: '1px solid #000', height: 120}}>
+          <div style={{width: '35%', padding: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRight: '1px solid #000'}}>
+             <div style={{textAlign: 'center'}}>
+               <h2 style={{margin: 0, fontSize: 22, fontWeight: 900}}>CAIOLOG</h2>
+               <p style={{margin: '5px 0', fontSize: 10}}>Logística & Transportes Ltda</p>
+               <p style={{margin: 0, fontSize: 8}}>Av. Interlagos, 1000 - SP</p>
+             </div>
+          </div>
+          <div style={{width: '15%', padding: 5, borderRight: '1px solid #000', textAlign: 'center'}}>
+             <h1 style={{margin: '10px 0 5px', fontSize: 24}}>DANFE</h1>
+             <span style={{fontSize: 8}}>Documento Auxiliar da<br/>Nota Fiscal Eletrônica</span>
+             <div style={{display: 'flex', justifyContent: 'center', gap: 10, marginTop: 10, fontSize: 10}}>
+                <div style={{border: '1px solid #000', padding: '2px 8px'}}>0 - ENTRADA</div>
+                <div style={{border: '1px solid #000', padding: '2px 8px', fontWeight: 'bold'}}>1 - SAÍDA</div>
+             </div>
+             <div style={{marginTop: 5, fontWeight: 'bold'}}>Nº {nfeNum}</div>
+             <div style={{fontSize: 10}}>SÉRIE 1</div>
+          </div>
+          <div style={{flex: 1, padding: 5}}>
+             <div className="barcode" style={{height: 40, marginBottom: 5}}></div>
+             <div style={{border: '1px solid #000', padding: 2, marginBottom: 5}}>
+                <span className="danfe-label">CHAVE DE ACESSO</span>
+                <span className="danfe-value" style={{textAlign: 'center', letterSpacing: 1}}>{chave}</span>
+             </div>
+             <div style={{textAlign: 'center', fontSize: 9}}>
+               Consulta de autenticidade no portal nacional da NF-e<br/>www.nfe.fazenda.gov.br/portal
+             </div>
+          </div>
+        </div>
+
+        {/* NATUREZA */}
+        <div className="danfe-group" style={{marginTop: -1}}>
+           <div className="danfe-col" style={{flex: 6}}>
+              <span className="danfe-label">NATUREZA DA OPERAÇÃO</span>
+              <span className="danfe-value">VENDA DE MERCADORIA ADQUIRIDA DE TERCEIROS</span>
            </div>
-           <div style={{...danfeStyles.col(2), textAlign:'center'}}>
-              <h3 style={{margin:'5px 0'}}>DANFE</h3>
-              <span style={{fontSize:8}}>Documento Auxiliar da<br/>Nota Fiscal Eletrônica</span>
-              <div style={{border:'1px solid #000', margin:'5px 10px', padding:2}}>1 - SAÍDA</div>
-              <strong style={{fontSize:10}}>Nº {nfeNum}</strong><br/>
-              <span style={{fontSize:9}}>SÉRIE 1</span>
-           </div>
-           <div style={{...danfeStyles.col(6), borderRight:'none'}}>
-              <div className="barcode" style={{height: 40, background: 'repeating-linear-gradient(90deg,#000,#000 1px,#fff 1px,#fff 3px)', margin:'5px 0'}}></div>
-              <span style={danfeStyles.label}>CHAVE DE ACESSO</span>
-              <span style={danfeStyles.value}>3523 1234 5678 9000 1234 5500 1000 0012 3456 7890</span>
+           <div className="danfe-col" style={{flex: 4}}>
+              <span className="danfe-label">PROTOCOLO DE AUTORIZAÇÃO DE USO</span>
+              <span className="danfe-value">135230001234567 - {new Date().toLocaleDateString()}</span>
            </div>
         </div>
 
         {/* DESTINATÁRIO */}
-        <div style={{background:'#eee', padding:2, fontSize:10, fontWeight:'bold', border:'1px solid #000', borderTop:'none', borderBottom:'none'}}>DESTINATÁRIO / REMETENTE</div>
-        <div style={danfeStyles.row}><div style={{...danfeStyles.col(6)}}><span style={danfeStyles.label}>NOME / RAZÃO SOCIAL</span><span style={danfeStyles.value}>{cliente.name}</span></div><div style={{...danfeStyles.col(3)}}><span style={danfeStyles.label}>CNPJ / CPF</span><span style={danfeStyles.value}>{cliente.cnpj}</span></div><div style={{...danfeStyles.col(2), borderRight:'none'}}><span style={danfeStyles.label}>DATA DA EMISSÃO</span><span style={danfeStyles.value}>{new Date(viagem.createdAt).toLocaleDateString()}</span></div></div>
-        
-        <div style={{...danfeStyles.row, borderBottom: '1px solid #000'}}><div style={{...danfeStyles.col(5)}}><span style={danfeStyles.label}>ENDEREÇO</span><span style={danfeStyles.value}>{viagem.destino}</span></div><div style={{...danfeStyles.col(4)}}><span style={danfeStyles.label}>BAIRRO / DISTRITO</span><span style={danfeStyles.value}>CENTRO</span></div><div style={{...danfeStyles.col(2), borderRight:'none'}}><span style={danfeStyles.label}>CEP</span><span style={danfeStyles.value}>00000-000</span></div></div>
-
-        {/* VALORES */}
-        <div style={{background:'#eee', padding:2, fontSize:10, fontWeight:'bold', border:'1px solid #000', borderTop:'none', borderBottom:'none', marginTop: 5}}>CÁLCULO DO IMPOSTO</div>
-        <div style={{...danfeStyles.row, borderBottom: '1px solid #000'}}>
-          <div style={danfeStyles.col(1)}><span style={danfeStyles.label}>BASE ICMS</span>0,00</div>
-          <div style={danfeStyles.col(1)}><span style={danfeStyles.label}>VALOR ICMS</span>0,00</div>
-          <div style={danfeStyles.col(1)}><span style={danfeStyles.label}>TOTAL PROD.</span>{viagem.valor.toFixed(2)}</div>
-          <div style={{...danfeStyles.col(1), borderRight:'none', background:'#f1f5f9'}}><span style={danfeStyles.label}>TOTAL NOTA</span>{viagem.valor.toFixed(2)}</div>
-        </div>
-
-        {/* TRANSPORTADOR */}
-        <div style={{background:'#eee', padding:2, fontSize:10, fontWeight:'bold', border:'1px solid #000', borderTop:'none', borderBottom:'none', marginTop: 5}}>TRANSPORTADOR / VOLUMES</div>
-        <div style={{...danfeStyles.row, borderBottom: '1px solid #000'}}>
-           <div style={danfeStyles.col(4)}><span style={danfeStyles.label}>RAZÃO SOCIAL</span><span style={danfeStyles.value}>{motorista ? motorista.name : 'A CONTRATAR'}</span></div>
-           <div style={danfeStyles.col(1)}><span style={danfeStyles.label}>FRETE</span>0-Emitente</div>
-           <div style={danfeStyles.col(2)}><span style={danfeStyles.label}>PLACA</span><span style={danfeStyles.value}>{veiculoInfo ? veiculoInfo.placa : '---'}</span></div>
-           <div style={{...danfeStyles.col(1), borderRight:'none'}}><span style={danfeStyles.label}>UF</span>SP</div>
-        </div>
-
-        {/* PRODUTOS */}
-        <div style={{background:'#eee', padding:2, fontSize:10, fontWeight:'bold', border:'1px solid #000', borderTop:'none', borderBottom:'none', marginTop: 5}}>DADOS DO PRODUTO / SERVIÇO</div>
-        <div style={{border:'1px solid #000', height: 400}}>
-           <div style={{display:'flex', borderBottom:'1px solid #000', fontSize:9, padding:4, fontWeight:'bold'}}>
-             <div style={{flex:1}}>COD</div>
-             <div style={{flex:5}}>DESCRIÇÃO</div>
-             <div style={{flex:1}}>QTD</div>
-             <div style={{flex:1, textAlign:'right'}}>UNIT</div>
-             <div style={{flex:1, textAlign:'right'}}>TOTAL</div>
+        <div className="danfe-title">DESTINATÁRIO / REMETENTE</div>
+        <div className="danfe-group">
+           <div className="danfe-col" style={{flex: 6}}>
+             <span className="danfe-label">NOME / RAZÃO SOCIAL</span>
+             <span className="danfe-value">{cliente.company || cliente.name.toUpperCase()}</span>
            </div>
-           {/* Item único */}
-           <div style={{display:'flex', fontSize:10, padding:4}}>
-             <div style={{flex:1}}>001</div>
-             <div style={{flex:5}}>{viagem.descricao}</div>
-             <div style={{flex:1}}>1</div>
-             <div style={{flex:1, textAlign:'right'}}>{viagem.valor.toFixed(2)}</div>
-             <div style={{flex:1, textAlign:'right'}}>{viagem.valor.toFixed(2)}</div>
+           <div className="danfe-col" style={{flex: 3}}>
+             <span className="danfe-label">CNPJ / CPF</span>
+             <span className="danfe-value">{cliente.cnpj}</span>
+           </div>
+           <div className="danfe-col" style={{flex: 2}}>
+             <span className="danfe-label">DATA DA EMISSÃO</span>
+             <span className="danfe-value">{new Date(viagem.createdAt).toLocaleDateString()}</span>
+           </div>
+        </div>
+        <div className="danfe-group">
+           <div className="danfe-col" style={{flex: 5}}>
+             <span className="danfe-label">ENDEREÇO</span>
+             <span className="danfe-value">{viagem.destino.split('-')[0]}</span>
+           </div>
+           <div className="danfe-col" style={{flex: 3}}>
+             <span className="danfe-label">BAIRRO / DISTRITO</span>
+             <span className="danfe-value">CENTRO</span>
+           </div>
+           <div className="danfe-col" style={{flex: 1}}>
+             <span className="danfe-label">CEP</span>
+             <span className="danfe-value">00000-000</span>
+           </div>
+             <div className="danfe-col" style={{flex: 2}}>
+             <span className="danfe-label">DATA SAÍDA</span>
+             <span className="danfe-value">{new Date().toLocaleDateString()}</span>
            </div>
         </div>
 
-      </div>
-    </div>
-  );
-}
         {/* CÁLCULO DO IMPOSTO */}
         <div className="danfe-title">CÁLCULO DO IMPOSTO</div>
         <div className="danfe-group">
