@@ -27,7 +27,7 @@ export async function getInitialData() {
       id: m.id,
       viagemId: v.id,
       senderId: m.senderId,
-      senderName: m.sender.name, // Simplificação
+      senderName: m.sender.name,
       text: m.text,
       timestamp: m.timestamp.toISOString()
     }))
@@ -66,8 +66,6 @@ export async function criarViagemAction(data) {
 }
 
 export async function atualizarViagemAction(id, data) {
-  // Se tiver histórico novo, precisamos adicionar ao existente (lógica simplificada)
-  // Nota: Em produção, faríamos um push no array JSON, aqui substituímos
   await prisma.viagem.update({
     where: { id: parseInt(id) },
     data: {
@@ -97,4 +95,67 @@ export async function criarVeiculoAction(data) {
 export async function criarUsuarioAction(data) {
   await prisma.user.create({ data })
   revalidatePath('/')
+}
+
+// --- AÇÃO DE CARGA INICIAL (SEED) ---
+// Função Essencial para popular o Banco Neon vazio com seus dados de teste
+export async function popularBancoAction() {
+  // 1. Criar Usuários
+  const usersSeed = [
+    { name: "Admin Geral", email: "admin", password: "123", role: "admin", cnpj: "00.000.000/0001-91", company: "CAIOLOG" },
+    { name: "Magazine Luiza", email: "magalu", password: "123", role: "cliente", cnpj: "47.960.950/0001-21", company: "Magazine Luiza S.A." },
+    { name: "Carlos Motorista", email: "carlos", password: "123", role: "motorista", cnpj: "12345678900", phone: "(11) 98888-8888" },
+    { name: "Americanas S.A.", email: "americanas", password: "123", role: "cliente", cnpj: "33.000.118/0001-36", company: "Americanas" }
+  ];
+
+  for (const u of usersSeed) {
+    const existe = await prisma.user.findUnique({ where: { email: u.email } });
+    if (!existe) {
+      await prisma.user.create({ data: u });
+    }
+  }
+
+  // 2. Criar Veículos
+  const veiculosSeed = [
+    { placa: "ABC-1234", modelo: "Fiat Fiorino", tipo: "Furgão", capacidade: "800kg", status: "ativo", ano: 2022 },
+    { placa: "XYZ-9876", modelo: "Mercedes Atego", tipo: "Caminhão", capacidade: "5ton", status: "ativo", ano: 2021 }
+  ];
+
+  for (const v of veiculosSeed) {
+    const existe = await prisma.veiculo.findUnique({ where: { placa: v.placa } });
+    if (!existe) {
+      await prisma.veiculo.create({ data: v });
+    }
+  }
+
+  // 3. Criar uma Viagem de Exemplo (Só se não tiver nenhuma)
+  const totalViagens = await prisma.viagem.count();
+  if (totalViagens === 0) {
+    const clienteMagalu = await prisma.user.findUnique({ where: { email: 'magalu' } });
+    const motoraCarlos = await prisma.user.findUnique({ where: { email: 'carlos' } });
+
+    if (clienteMagalu && motoraCarlos) {
+      await prisma.viagem.create({
+        data: {
+          codigo: "CL-9981",
+          descricao: "Lote de Notebooks Dell - 50 unidades",
+          valor: 45000,
+          origem: "São Paulo - SP",
+          destino: "Rio de Janeiro - RJ",
+          lat: -23.55, lng: -46.63,
+          destLat: -22.90, destLng: -43.17,
+          otp: "9988",
+          peso: "350kg",
+          status: "pendente",
+          clienteId: clienteMagalu.id,
+          motoristaId: motoraCarlos.id,
+          checklist: { pneus: false, oleo: false, carga_presa: false, documentacao: false },
+          history: [{status: 'pendente', date: new Date(), descricao: 'Importado do sistema antigo'}]
+        }
+      });
+    }
+  }
+
+  revalidatePath('/');
+  return { success: true };
 }
