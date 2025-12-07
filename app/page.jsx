@@ -1,578 +1,814 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
-import { useRouter } from "next/navigation";
-// Importamos as ações do arquivo vizinho (obrigatório ser separado)
-import { 
-  getInitialData, 
-  criarViagemAction, 
-  atualizarViagemAction, 
-  enviarMensagemAction, 
-  criarUsuarioAction,
-  criarVeiculoAction,
-  popularBancoAction // Importante para o botão de resgate
-} from "./actions";
+import debounce from "lodash/debounce";
 
 // --- MAPA DINÂMICO ---
-const Map = dynamic(() => import("./components/map"), {
+// CORRIGIDO: Caminho correto baseado na estrutura
+const Map = dynamic(() => import("./map"), {
   ssr: false,
-  loading: () => <div className="loading-map">📡 Satélite CAIOLOG...</div>,
+  loading: () => (
+    <div style={{
+      height: '100%', width: '100%', background: '#e2e8f0',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      color: '#64748b'
+    }}>
+      📡 Carregando Satélite...
+    </div>
+  ),
 });
 
-// --- CONSTANTES ---
-const ESTADOS_E_CIDADES = {
-  "AC": { nome: "Acre", cidades: ["Rio Branco", "Cruzeiro do Sul", "Sena Madureira"] },
-  "AL": { nome: "Alagoas", cidades: ["Maceió", "Arapiraca", "Palmeira dos Índios"] },
-  "AP": { nome: "Amapá", cidades: ["Macapá", "Santana", "Laranjal do Jari"] },
-  "AM": { nome: "Amazonas", cidades: ["Manaus", "Parintins", "Itacoatiara", "Manacapuru"] },
-  "BA": { nome: "Bahia", cidades: ["Salvador", "Feira de Santana", "Vitória da Conquista", "Camaçari", "Juazeiro"] },
-  "CE": { nome: "Ceará", cidades: ["Fortaleza", "Caucaia", "Juazeiro do Norte", "Maracanaú", "Sobral"] },
-  "DF": { nome: "Distrito Federal", cidades: ["Brasília"] },
-  "ES": { nome: "Espírito Santo", cidades: ["Vitória", "Vila Velha", "Serra", "Cariacica", "Linhares"] },
-  "GO": { nome: "Goiás", cidades: ["Goiânia", "Aparecida de Goiânia", "Anápolis", "Rio Verde", "Luziânia"] },
-  "MA": { nome: "Maranhão", cidades: ["São Luís", "Imperatriz", "Timon", "Caxias", "Codó"] },
-  "MT": { nome: "Mato Grosso", cidades: ["Cuiabá", "Várzea Grande", "Rondonópolis", "Sinop", "Tangará da Serra"] },
-  "MS": { nome: "Mato Grosso do Sul", cidades: ["Campo Grande", "Dourados", "Três Lagoas", "Corumbá", "Ponta Porã"] },
-  "MG": { nome: "Minas Gerais", cidades: ["Belo Horizonte", "Uberlândia", "Contagem", "Juiz de Fora", "Betim", "Montes Claros", "Ribeirão das Neves"] },
-  "PA": { nome: "Pará", cidades: ["Belém", "Ananindeua", "Santarém", "Marabá", "Castanhal"] },
-  "PB": { nome: "Paraíba", cidades: ["João Pessoa", "Campina Grande", "Santa Rita", "Patos", "Bayeux"] },
-  "PR": { nome: "Paraná", cidades: ["Curitiba", "Londrina", "Maringá", "Ponta Grossa", "Cascavel", "São José dos Pinhais"] },
-  "PE": { nome: "Pernambuco", cidades: ["Recife", "Jaboatão dos Guararapes", "Olinda", "Caruaru", "Petrolina", "Paulista"] },
-  "PI": { nome: "Piauí", cidades: ["Teresina", "Parnaíba", "Picos", "Piripiri", "Floriano"] },
-  "RJ": { nome: "Rio de Janeiro", cidades: ["Rio de Janeiro", "São Gonçalo", "Duque de Caxias", "Nova Iguaçu", "Niterói", "Belford Roxo", "Campos dos Goytacazes"] },
-  "RN": { nome: "Rio Grande do Norte", cidades: ["Natal", "Mossoró", "Parnamirim", "São Gonçalo do Amarante", "Macaíba"] },
-  "RS": { nome: "Rio Grande do Sul", cidades: ["Porto Alegre", "Caxias do Sul", "Pelotas", "Canoas", "Santa Maria", "Gravataí", "Novo Hamburgo"] },
-  "RO": { nome: "Rondônia", cidades: ["Porto Velho", "Ji-Paraná", "Ariquemes", "Vilhena", "Cacoal"] },
-  "RR": { nome: "Roraima", cidades: ["Boa Vista", "Rorainópolis", "Caracaraí", "Alto Alegre"] },
-  "SC": { nome: "Santa Catarina", cidades: ["Florianópolis", "Joinville", "Blumenau", "São José", "Criciúma", "Chapecó", "Itajaí"] },
-  "SP": { nome: "São Paulo", cidades: ["São Paulo", "Guarulhos", "Campinas", "São Bernardo do Campo", "Santo André", "Osasco", "São José dos Campos", "Ribeirão Preto", "Sorocaba", "Mauá"] },
-  "SE": { nome: "Sergipe", cidades: ["Aracaju", "Nossa Senhora do Socorro", "Lagarto", "Itabaiana", "Estância"] },
-  "TO": { nome: "Tocantins", cidades: ["Palmas", "Araguaína", "Gurupi", "Porto Nacional", "Paraíso do Tocantins"] }
-};
-
-const COORDENADAS_CIDADES = {
-  "São Paulo": { lat: -23.55, lng: -46.63 },
-  "Rio de Janeiro": { lat: -22.90, lng: -43.17 },
-  "Belo Horizonte": { lat: -19.91, lng: -43.93 },
-  "Porto Alegre": { lat: -30.03, lng: -51.21 },
-  "Salvador": { lat: -12.97, lng: -38.50 },
-  "Recife": { lat: -8.05, lng: -34.88 },
-  "Fortaleza": { lat: -3.73, lng: -38.52 },
-  "Manaus": { lat: -3.12, lng: -60.02 },
-  "Curitiba": { lat: -25.43, lng: -49.27 },
-  "Goiânia": { lat: -16.69, lng: -49.26 },
-  "Campinas": { lat: -22.90, lng: -47.06 },
-  "Santos": { lat: -23.96, lng: -46.33 },
-  "Niterói": { lat: -22.88, lng: -43.11 },
-  "Uberlândia": { lat: -18.91, lng: -48.27 },
-  "Feira de Santana": { lat: -12.27, lng: -38.95 },
-  "Caxias do Sul": { lat: -29.16, lng: -51.17 }
-};
-
-const getCityCoords = (cityName) => COORDENADAS_CIDADES[cityName] || { lat: -23.55, lng: -46.63 };
-const formatMoney = (v) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-const generateOTP = () => Math.floor(1000 + Math.random() * 9000).toString();
-
-// --- ESTILOS ---
-const GLOBAL_STYLES = `
-  @media print {
-    body * { visibility: hidden; }
-    .printable-area, .printable-area * { visibility: visible; }
-    .printable-area { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; }
-    .no-print { display: none !important; }
-    @page { size: A4; margin: 0; }
-  }
-  .danfe-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 9999; display: flex; flex-direction: column; alignItems: center; padding: 20px 0; overflow-y: auto; }
-  .star-rating { display: inline-flex; gap: 5px; }
-  .star-rating .star { font-size: 24px; cursor: pointer; transition: transform 0.2s; }
-  .star-rating .star:hover { transform: scale(1.2); }
-  .star-rating .star.filled { color: #fbbf24; }
-  .star-rating .star.empty { color: #d1d5db; }
-  .chat-message { animation: slideInUp 0.3s ease-out; }
-  @keyframes slideInUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-`;
-
-const COLORS = {
-  primary: "#0f172a", accent: "#f97316", success: "#15803d", warning: "#f59e0b", danger: "#dc2626", info: "#3b82f6", bg: "#f8fafc", border: "#e2e8f0", text: "#334155", textLight: "#64748b"
-};
-
-const styles = {
-  container: { padding: 20, maxWidth: 1400, margin: "0 auto", fontFamily: "'Inter', sans-serif", background: COLORS.bg, minHeight: "100vh", color: COLORS.text, paddingBottom: 100 },
-  header: { background: COLORS.primary, color: "white", padding: "15px 30px", borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 30, boxShadow: "0 4px 10px rgba(0,0,0,0.1)" },
-  card: { background: "white", padding: 25, borderRadius: 12, border: `1px solid ${COLORS.border}`, boxShadow: "0 2px 4px rgba(0,0,0,0.05)", marginBottom: 20, position: 'relative' },
-  input: { width: "100%", padding: 12, borderRadius: 6, border: `1px solid ${COLORS.border}`, outline: "none", marginBottom: 10, fontSize: 14 },
-  select: { width: "100%", padding: 12, borderRadius: 6, border: `1px solid ${COLORS.border}`, outline: "none", marginBottom: 10, fontSize: 14, background: "white" },
-  btn: { padding: "12px 20px", borderRadius: 6, border: "none", cursor: "pointer", fontWeight: "600", fontSize: 12, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  badge: { padding: "4px 10px", borderRadius: 20, fontSize: 10, fontWeight: "800", textTransform: "uppercase", display: 'inline-flex', alignItems: 'center', gap: 4 },
-  modal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: 20 },
-  chatBtn: { position: 'fixed', bottom: 20, right: 20, width: 60, height: 60, borderRadius: '50%', background: COLORS.accent, color: 'white', border: 'none', cursor: 'pointer', boxShadow: '0 4px 10px rgba(0,0,0,0.3)', zIndex: 1000, fontSize: 24, display: 'flex', alignItems:'center', justifyContent:'center' },
-  chatWindow: { position: 'fixed', bottom: 90, right: 20, width: 320, height: 400, background: 'white', borderRadius: 12, boxShadow: '0 5px 20px rgba(0,0,0,0.2)', zIndex: 1000, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-  checklistItem: { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: '1px solid #f1f5f9' },
-};
-
-// --- COMPONENTE PRINCIPAL ---
-export default function App() {
-  const router = useRouter();
-  const [user, setUser] = useState(null);
-  const [data, setData] = useState({ users: [], viagens: [], veiculos: [], messages: [] });
-  const [loading, setLoading] = useState(true);
-
-  // Carrega dados iniciais do banco
-  useEffect(() => {
-    getInitialData().then(serverData => {
-      setData(serverData);
-      setLoading(false);
+// --- BUSCA INTELIGENTE POR NOME (NOMINATIM) ---
+const buscarSugestoesPorNome = async (endereco) => {
+  if (!endereco || endereco.length < 3) return [];
+  try {
+    const query = `${endereco}, Brazil`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`;
+    const response = await fetch(url, {
+      headers: {
+        'Accept-Language': 'pt-BR,pt'
+      }
     });
-  }, []);
+    const data = await response.json();
 
-  // Polling para atualização automática
-  useEffect(() => {
-    const interval = setInterval(() => {
-      getInitialData().then(serverData => setData(serverData));
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    return data.map(item => ({
+      lat: parseFloat(item.lat),
+      lng: parseFloat(item.lon),
+      nomeCompleto: item.display_name,
+      nomeReduzido: item.display_name.split(',').slice(0, 3).join(', '),
+      tipo: item.type,
+      importancia: item.importance,
+      endereco: {
+        rua: item.address?.road || '',
+        numero: item.address?.house_number || '',
+        bairro: item.address?.suburb || item.address?.neighbourhood || '',
+        cidade: item.address?.city || item.address?.town || item.address?.village || '',
+        estado: item.address?.state || '',
+        cep: item.address?.postcode || ''
+      }
+    }));
+  } catch (error) {
+    console.error("Erro na busca:", error);
+    return [];
+  }
+};
 
-  const login = (email, password) => {
-    // Permite login provisório se não houver usuários no banco ainda
-    if (data.users.length === 0 && email === 'admin' && password === '123') {
-       alert("Banco vazio! Use o botão 'Popular Banco' abaixo.");
-       return;
+const buscarCoordenadasPorNome = async (endereco) => {
+  if (!endereco || endereco.length < 3) return null;
+  try {
+    const query = `${endereco}, Brazil`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+    const response = await fetch(url, {
+      headers: {
+        'Accept-Language': 'pt-BR,pt'
+      }
+    });
+    const data = await response.json();
+
+    if (data && data.length > 0) {
+      return {
+        lat: parseFloat(data[0].lat),
+        lng: parseFloat(data[0].lon),
+        nomeCompleto: data[0].display_name,
+        nomeReduzido: data[0].display_name.split(',').slice(0, 3).join(', ')
+      };
     }
-    const found = data.users.find(u => u.email === email && u.password === password);
-    if (found) setUser(found);
-    else alert("Usuário não encontrado!");
-  };
+  } catch (error) {
+    console.error("Erro na busca:", error);
+  }
+  return null;
+};
 
-  if (loading) return <div style={{display:'flex',justifyContent:'center',alignItems:'center',height:'100vh'}}>Carregando CAIOLOG...</div>;
-  if (!user) return <LoginScreen onLogin={login} hasUsers={data.users.length > 0} />;
+// Fallback para não quebrar o mapa se a API falhar
+const COORDENADAS_PADRAO = { lat: -23.55, lng: -46.63 };
 
-  return (
-    <div style={styles.container}>
-      <style>{GLOBAL_STYLES}</style>
-      <Header user={user} logout={() => setUser(null)} />
-      
-      <main style={{maxWidth: 1200, margin: "0 auto", padding: 20}}>
-        {user.role === "admin" && <AdminDashboard data={data} user={user} />}
-        {user.role === "motorista" && <MotoristaDashboard user={user} viagens={data.viagens} messages={data.messages} />}
-        {user.role === "cliente" && <ClienteDashboard user={user} viagens={data.viagens} users={data.users} messages={data.messages} />}
-        <CaiologAds />
-      </main>
+/* ============================================================================
+   COMPONENTE DE BUSCA DE ENDEREÇO AVANÇADO
+============================================================================ */
+function EnderecoBuscaAvancada({ 
+  label, 
+  value, 
+  onChange, 
+  onCoordsChange, 
+  placeholder = "Digite o endereço...",
+  tipo = "origem",
+  showMap = true
+}) {
+  const [inputValue, setInputValue] = useState(value || '');
+  const [sugestoes, setSugestoes] = useState([]);
+  const [mostrarSugestoes, setMostrarSugestoes] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [coordenadasAtuais, setCoordenadasAtuais] = useState(null);
+  const [enderecoValido, setEnderecoValido] = useState(false);
+  const [mensagemErro, setMensagemErro] = useState('');
+  const containerRef = useRef(null);
+  const inputRef = useRef(null);
 
-      <ChatWidget user={user} viagens={data.viagens} messages={data.messages} />
-    </div>
+  // Debounce para evitar muitas requisições
+  const buscarSugestoesDebounced = useCallback(
+    debounce(async (texto) => {
+      if (texto.length < 3) {
+        setSugestoes([]);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      const resultados = await buscarSugestoesPorNome(texto);
+      setSugestoes(resultados);
+      setLoading(false);
+      setMostrarSugestoes(true);
+    }, 300),
+    []
   );
-}
 
-// --- SUB-COMPONENTES ---
+  useEffect(() => {
+    if (value) {
+      setInputValue(value);
+      validarEndereco(value);
+    }
+  }, [value]);
 
-function AdminDashboard({ data, user }) {
-  const router = useRouter();
-  const [tab, setTab] = useState('viagens');
-  const [modal, setModal] = useState({ type: null, data: null });
-  const [cancelId, setCancelId] = useState(null);
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setMostrarSugestoes(false);
+      }
+    };
 
-  const stats = {
-    total: data.viagens.length,
-    pendentes: data.viagens.filter(v => v.status === 'pendente').length,
-    rota: data.viagens.filter(v => v.status === 'em rota').length,
-    entregues: data.viagens.filter(v => v.status === 'entregue').length
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleInputChange = (e) => {
+    const texto = e.target.value;
+    setInputValue(texto);
+    onChange(texto);
+    setEnderecoValido(false);
+    setMensagemErro('');
+    
+    if (texto.length >= 3) {
+      buscarSugestoesDebounced(texto);
+    } else {
+      setSugestoes([]);
+      setMostrarSugestoes(false);
+    }
   };
 
-  const handleCancel = async (reason) => {
-    await atualizarViagemAction(cancelId, { canceled: true, cancelReason: reason, status: 'cancelado' });
-    setCancelId(null);
-    router.refresh();
+  const validarEndereco = async (endereco) => {
+    if (!endereco || endereco.length < 3) {
+      setEnderecoValido(false);
+      setMensagemErro('Endereço muito curto');
+      return;
+    }
+
+    setLoading(true);
+    const coordenadas = await buscarCoordenadasPorNome(endereco);
+    
+    if (coordenadas) {
+      setCoordenadasAtuais(coordenadas);
+      setEnderecoValido(true);
+      setMensagemErro('');
+      onCoordsChange(coordenadas);
+    } else {
+      setEnderecoValido(false);
+      setMensagemErro('Endereço não encontrado. Tente ser mais específico.');
+      setCoordenadasAtuais(null);
+    }
+    setLoading(false);
+  };
+
+  const selecionarSugestao = (sugestao) => {
+    setInputValue(sugestao.nomeReduzido);
+    onChange(sugestao.nomeReduzido);
+    setCoordenadasAtuais(sugestao);
+    setEnderecoValido(true);
+    setMensagemErro('');
+    setSugestoes([]);
+    setMostrarSugestoes(false);
+    onCoordsChange(sugestao);
+  };
+
+  const usarMinhaLocalizacao = () => {
+    if (!navigator.geolocation) {
+      setMensagemErro('Geolocalização não suportada pelo navegador');
+      return;
+    }
+
+    setLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const coords = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          nomeCompleto: 'Minha localização atual',
+          nomeReduzido: 'Minha localização'
+        };
+        
+        // Reverse geocoding para obter o endereço
+        fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${coords.lat}&lon=${coords.lng}&zoom=18&addressdetails=1`)
+          .then(res => res.json())
+          .then(data => {
+            const enderecoCompleto = data.display_name;
+            setInputValue(enderecoCompleto.split(',').slice(0, 3).join(', '));
+            onChange(enderecoCompleto.split(',').slice(0, 3).join(', '));
+            setCoordenadasAtuais({
+              ...coords,
+              nomeCompleto: enderecoCompleto,
+              nomeReduzido: enderecoCompleto.split(',').slice(0, 3).join(', ')
+            });
+            setEnderecoValido(true);
+            setMensagemErro('');
+            onCoordsChange({
+              ...coords,
+              nomeCompleto: enderecoCompleto,
+              nomeReduzido: enderecoCompleto.split(',').slice(0, 3).join(', ')
+            });
+          })
+          .catch(() => {
+            setInputValue('Minha localização atual');
+            onChange('Minha localização atual');
+            setCoordenadasAtuais(coords);
+            setEnderecoValido(true);
+            setMensagemErro('');
+            onCoordsChange(coords);
+          })
+          .finally(() => setLoading(false));
+      },
+      (error) => {
+        setLoading(false);
+        setMensagemErro('Não foi possível obter sua localização: ' + error.message);
+      }
+    );
   };
 
   return (
-    <div>
-      <div style={{display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 15, marginBottom: 20}}>
-         <div style={{...styles.card, padding: 15, textAlign:'center'}}><h2>{stats.total}</h2><small>Total</small></div>
-         <div style={{...styles.card, padding: 15, textAlign:'center', color: COLORS.warning}}><h2>{stats.pendentes}</h2><small>Pendentes</small></div>
-         <div style={{...styles.card, padding: 15, textAlign:'center', color: COLORS.info}}><h2>{stats.rota}</h2><small>Em Rota</small></div>
-         <div style={{...styles.card, padding: 15, textAlign:'center', color: COLORS.success}}><h2>{stats.entregues}</h2><small>Entregues</small></div>
+    <div style={{ marginBottom: 20 }} ref={containerRef}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <label style={{ fontSize: 12, color: '#334155', fontWeight: 'bold' }}>
+          {label}
+          {coordenadasAtuais && (
+            <span style={{ marginLeft: 8, fontSize: 10, color: '#10b981', fontWeight: 'normal' }}>
+              ✓ Localizado
+            </span>
+          )}
+        </label>
+        
+        <button
+          type="button"
+          onClick={usarMinhaLocalizacao}
+          style={{
+            background: 'transparent',
+            border: '1px solid #3b82f6',
+            color: '#3b82f6',
+            padding: '4px 12px',
+            borderRadius: 6,
+            fontSize: 11,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4
+          }}
+          title="Usar minha localização atual"
+        >
+          📍 Minha Localização
+        </button>
       </div>
 
-      <div style={{display: 'flex', gap: 10, marginBottom: 20}}>
-        {['viagens', 'usuarios', 'frota'].map(t => (
-            <button key={t} onClick={()=>setTab(t)} style={{...styles.btn, background: tab===t ? COLORS.primary : 'white', color: tab===t?'white':COLORS.text, border: '1px solid #ccc'}}>{t.toUpperCase()}</button>
-        ))}
-      </div>
-
-      {modal.type === 'danfe' && <DanfeRealista viagem={modal.data} users={data.users} veiculos={data.veiculos} onClose={() => setModal({type:null})} />}
-      {cancelId && <CancelModal onClose={() => setCancelId(null)} onConfirm={handleCancel} isAdmin={true} />}
-
-      {tab === "viagens" && (
-        <AdminViagens 
-          viagens={data.viagens} 
-          clientes={data.users.filter(u => u.role === 'cliente')}
-          onOpenDanfe={(v) => setModal({type:'danfe', data:v})}
-          onCancel={setCancelId}
+      <div style={{ position: 'relative' }}>
+        <input
+          ref={inputRef}
+          type="text"
+          value={inputValue}
+          onChange={handleInputChange}
+          placeholder={placeholder}
+          style={{
+            ...styles.input,
+            borderColor: mensagemErro ? '#ef4444' : 
+                       enderecoValido ? '#10b981' : 
+                       '#e2e8f0',
+            paddingRight: 40,
+            marginBottom: 0
+          }}
+          onFocus={() => inputValue.length >= 3 && setMostrarSugestoes(true)}
         />
+        
+        <div style={{
+          position: 'absolute',
+          right: 10,
+          top: '50%',
+          transform: 'translateY(-50%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4
+        }}>
+          {loading && (
+            <div style={{
+              width: 16,
+              height: 16,
+              border: '2px solid #e2e8f0',
+              borderTopColor: '#3b82f6',
+              borderRadius: '50%',
+              animation: 'spin 1s linear infinite'
+            }} />
+          )}
+          {enderecoValido && !loading && (
+            <span style={{ color: '#10b981', fontSize: 18 }}>✓</span>
+          )}
+          {mensagemErro && !loading && (
+            <span style={{ color: '#ef4444', fontSize: 18 }}>⚠️</span>
+          )}
+        </div>
+
+        {/* Lista de Sugestões */}
+        {mostrarSugestoes && sugestoes.length > 0 && (
+          <div style={{
+            position: 'absolute',
+            top: '100%',
+            left: 0,
+            right: 0,
+            background: 'white',
+            border: '1px solid #e2e8f0',
+            borderRadius: '0 0 6px 6px',
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)',
+            zIndex: 1000,
+            maxHeight: 300,
+            overflowY: 'auto'
+          }}>
+            {sugestoes.map((sugestao, index) => (
+              <div
+                key={index}
+                onClick={() => selecionarSugestao(sugestao)}
+                style={{
+                  padding: '12px 16px',
+                  cursor: 'pointer',
+                  borderBottom: '1px solid #f1f5f9',
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  transition: 'background-color 0.2s'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f8fafc'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'white'}
+              >
+                <div style={{ 
+                  width: 32, 
+                  height: 32, 
+                  background: tipo === 'origem' ? '#fef3c7' : '#dbeafe',
+                  borderRadius: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 16
+                }}>
+                  {tipo === 'origem' ? '📍' : '🏁'}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 500, marginBottom: 2 }}>
+                    {sugestao.endereco.rua} {sugestao.endereco.numero}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                    {sugestao.endereco.bairro}, {sugestao.endereco.cidade} - {sugestao.endereco.estado}
+                  </div>
+                </div>
+                <div style={{ 
+                  fontSize: 10, 
+                  color: '#94a3b8',
+                  textAlign: 'right',
+                  minWidth: 60
+                }}>
+                  {sugestao.tipo === 'city' ? 'Cidade' : 
+                   sugestao.tipo === 'road' ? 'Rua' : 
+                   sugestao.tipo}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Mensagens de feedback */}
+      {mensagemErro && (
+        <div style={{
+          marginTop: 8,
+          padding: '8px 12px',
+          background: '#fef2f2',
+          border: '1px solid #fecaca',
+          borderRadius: 6,
+          fontSize: 12,
+          color: '#dc2626',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8
+        }}>
+          ⚠️ {mensagemErro}
+        </div>
       )}
-      {tab === "usuarios" && <AdminUsers users={data.users} />}
-      {tab === "frota" && <AdminFrota veiculos={data.veiculos} />}
+
+      {coordenadasAtuais && (
+        <div style={{
+          marginTop: 8,
+          fontSize: 11,
+          color: '#64748b',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center'
+        }}>
+          <span>Lat: {coordenadasAtuais.lat.toFixed(6)}, Lng: {coordenadasAtuais.lng.toFixed(6)}</span>
+          <button
+            type="button"
+            onClick={() => validarEndereco(inputValue)}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: '#3b82f6',
+              fontSize: 11,
+              cursor: 'pointer',
+              textDecoration: 'underline'
+            }}
+          >
+            Validar novamente
+          </button>
+        </div>
+      )}
+
+      {/* Mapa de visualização */}
+      {showMap && coordenadasAtuais && (
+        <div style={{
+          marginTop: 16,
+          height: 200,
+          borderRadius: 8,
+          overflow: 'hidden',
+          border: '1px solid #e2e8f0',
+          position: 'relative'
+        }}>
+          <Map
+            center={[coordenadasAtuais.lat, coordenadasAtuais.lng]}
+            zoom={15}
+            markers={[
+              {
+                position: [coordenadasAtuais.lat, coordenadasAtuais.lng],
+                popup: tipo === 'origem' ? '📍 Origem' : '🏁 Destino',
+                color: tipo === 'origem' ? '#f59e0b' : '#3b82f6'
+              }
+            ]}
+            style={{ height: '100%', width: '100%' }}
+          />
+          <div style={{
+            position: 'absolute',
+            bottom: 10,
+            left: 10,
+            background: 'rgba(255, 255, 255, 0.9)',
+            padding: '6px 12px',
+            borderRadius: 6,
+            fontSize: 11,
+            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6
+          }}>
+            {tipo === 'origem' ? '📍' : '🏁'}
+            <span style={{ fontWeight: 500 }}>{tipo === 'origem' ? 'Origem' : 'Destino'}</span>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </div>
   );
 }
 
-function AdminViagens({ viagens, clientes, onOpenDanfe, onCancel }) {
-  const router = useRouter();
-  const [form, setForm] = useState({ desc: "", valor: "", clienteId: "", origemUF: "SP", origemCidade: "", destinoUF: "RJ", destinoCidade: "" });
+/* ============================================================================
+   ADMIN VIAGENS COM BUSCA DE ENDEREÇO AVANÇADA
+============================================================================ */
+function AdminViagens({ viagens, clientes, onOpenDanfe, onCancel, onRefresh }) {
+  const [form, setForm] = useState({ 
+    desc: "", 
+    valor: "", 
+    clienteId: "", 
+    origem: "", 
+    destino: "" 
+  });
+  const [origemCoords, setOrigemCoords] = useState(null);
+  const [destinoCoords, setDestinoCoords] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [busca, setBusca] = useState("");
+  const [rotaPreview, setRotaPreview] = useState(false);
 
   const criar = async (e) => {
     e.preventDefault();
-    if(!form.origemCidade || !form.destinoCidade || !form.clienteId) return alert("Preencha tudo!");
     
-    const origemCoords = getCityCoords(form.origemCidade);
-    const destinoCoords = getCityCoords(form.destinoCidade);
+    if (!form.clienteId) return alert("Selecione um cliente!");
+    if (!origemCoords || !destinoCoords) return alert("Por favor, valide ambos os endereços!");
+    
+    setLoading(true);
 
-    await criarViagemAction({
-      ...form,
-      lat: origemCoords.lat, lng: origemCoords.lng,
-      destLat: destinoCoords.lat, destLng: destinoCoords.lng
-    });
-    router.refresh();
-    setForm({...form, desc: "", valor: ""});
-    alert("Viagem Criada!");
+    try {
+      await criarViagemAction({
+        desc: form.desc,
+        valor: form.valor,
+        clienteId: form.clienteId,
+        origem: form.origem,
+        origemCidade: origemCoords.endereco?.cidade || "GPS",
+        origemUF: origemCoords.endereco?.estado || "BR",
+        destino: form.destino,
+        destinoCidade: destinoCoords.endereco?.cidade || "GPS",
+        destinoUF: destinoCoords.endereco?.estado || "BR",
+        lat: origemCoords.lat,
+        lng: origemCoords.lng,
+        destLat: destinoCoords.lat,
+        destLng: destinoCoords.lng
+      });
+
+      setLoading(false);
+      setForm({ desc: "", valor: "", clienteId: "", origem: "", destino: "" });
+      setOrigemCoords(null);
+      setDestinoCoords(null);
+      alert("✅ Viagem Criada com Sucesso!");
+      onRefresh();
+    } catch (error) {
+      setLoading(false);
+      alert("❌ Erro ao criar viagem: " + error.message);
+    }
   };
+
+  const viagensFiltradas = viagens.filter(v => 
+    v.codigo.toLowerCase().includes(busca.toLowerCase()) || 
+    v.descricao.toLowerCase().includes(busca.toLowerCase())
+  );
 
   return (
     <>
       <div style={styles.card}>
-        <h3>Nova Carga</h3>
-        <form onSubmit={criar} style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(200px, 1fr))', gap: 15}}>
-            <input style={styles.input} placeholder="Descrição" value={form.desc} onChange={e => setForm({...form, desc: e.target.value})} required />
-            <input style={styles.input} type="number" placeholder="Valor (R$)" value={form.valor} onChange={e => setForm({...form, valor: e.target.value})} required />
-            <select style={styles.select} value={form.clienteId} onChange={e => setForm({...form, clienteId: e.target.value})} required>
-                <option value="">Selecione Cliente...</option>
-                {clientes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-            
-            <select style={styles.select} value={form.origemUF} onChange={e => setForm({...form, origemUF: e.target.value, origemCidade: ""})}>
-                <option value="">UF Origem</option>
-                {Object.keys(ESTADOS_E_CIDADES).map(uf => <option key={uf} value={uf}>{uf}</option>)}
-            </select>
-            <select style={styles.select} value={form.origemCidade} onChange={e => setForm({...form, origemCidade: e.target.value})}>
-                <option value="">Cidade Origem</option>
-                {form.origemUF && ESTADOS_E_CIDADES[form.origemUF]?.cidades.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+        <h3>Nova Carga - Busca Inteligente de Endereços</h3>
+        
+        <form onSubmit={criar} style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {/* Informações básicas */}
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 15 }}>
+            <div>
+              <label style={{ fontSize: 12, color: COLORS.textLight, fontWeight: 'bold', marginBottom: 4, display: 'block' }}>
+                📦 Descrição da Carga
+              </label>
+              <input 
+                style={styles.input} 
+                placeholder="Ex: 10 Caixas de Eletrônicos" 
+                value={form.desc} 
+                onChange={e => setForm({...form, desc: e.target.value})} 
+                required 
+              />
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: COLORS.textLight, fontWeight: 'bold', marginBottom: 4, display: 'block' }}>
+                💰 Valor (R$)
+              </label>
+              <input 
+                style={styles.input} 
+                type="number" 
+                placeholder="0,00" 
+                value={form.valor} 
+                onChange={e => setForm({...form, valor: e.target.value})} 
+                required 
+                step="0.01"
+              />
+            </div>
+          </div>
 
-            <select style={styles.select} value={form.destinoUF} onChange={e => setForm({...form, destinoUF: e.target.value, destinoCidade: ""})}>
-                <option value="">UF Destino</option>
-                {Object.keys(ESTADOS_E_CIDADES).map(uf => <option key={uf} value={uf}>{uf}</option>)}
+          {/* Cliente */}
+          <div>
+            <label style={{ fontSize: 12, color: COLORS.textLight, fontWeight: 'bold', marginBottom: 4, display: 'block' }}>
+              👤 Cliente
+            </label>
+            <select 
+              style={styles.select} 
+              value={form.clienteId} 
+              onChange={e => setForm({...form, clienteId: e.target.value})} 
+              required
+            >
+              <option value="">Selecione um cliente...</option>
+              {clientes.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name} - {c.company || "Sem empresa"}
+                </option>
+              ))}
             </select>
-            <select style={styles.select} value={form.destinoCidade} onChange={e => setForm({...form, destinoCidade: e.target.value})}>
-                <option value="">Cidade Destino</option>
-                {form.destinoUF && ESTADOS_E_CIDADES[form.destinoUF]?.cidades.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+          </div>
 
-            <button style={{...styles.btn, background: COLORS.primary, color:'white', gridColumn: '1/-1'}}>CRIAR PEDIDO</button>
+          {/* Endereços com busca avançada */}
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: '1fr 1fr', 
+            gap: 20,
+            alignItems: 'stretch'
+          }}>
+            {/* Origem */}
+            <EnderecoBuscaAvancada
+              label="📍 PONTO DE ORIGEM"
+              value={form.origem}
+              onChange={(value) => setForm({...form, origem: value})}
+              onCoordsChange={setOrigemCoords}
+              placeholder="Ex: Shopping Aricanduva, São Paulo"
+              tipo="origem"
+              showMap={true}
+            />
+
+            {/* Destino */}
+            <EnderecoBuscaAvancada
+              label="🏁 PONTO DE DESTINO"
+              value={form.destino}
+              onChange={(value) => setForm({...form, destino: value})}
+              onCoordsChange={setDestinoCoords}
+              placeholder="Ex: Av. Paulista, 1000 - São Paulo"
+              tipo="destino"
+              showMap={true}
+            />
+          </div>
+
+          {/* Preview da Rota */}
+          {origemCoords && destinoCoords && (
+            <div style={{
+              background: '#f8fafc',
+              padding: 15,
+              borderRadius: 8,
+              border: '1px dashed #cbd5e1'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div>
+                  <strong style={{ fontSize: 14 }}>🗺️ Preview da Rota</strong>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>
+                    Distância estimada: Calculando... • Tempo estimado: Calculando...
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRotaPreview(!rotaPreview)}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #3b82f6',
+                    color: '#3b82f6',
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    fontSize: 11,
+                    cursor: 'pointer'
+                  }}
+                >
+                  {rotaPreview ? 'Ocultar Mapa' : 'Ver Mapa Completo'}
+                </button>
+              </div>
+
+              {rotaPreview && (
+                <div style={{ height: 300, borderRadius: 6, overflow: 'hidden' }}>
+                  <Map
+                    center={[
+                      (origemCoords.lat + destinoCoords.lat) / 2,
+                      (origemCoords.lng + destinoCoords.lng) / 2
+                    ]}
+                    zoom={12}
+                    markers={[
+                      {
+                        position: [origemCoords.lat, origemCoords.lng],
+                        popup: '📍 Origem: ' + form.origem.split(',').slice(0,2).join(','),
+                        color: '#f59e0b'
+                      },
+                      {
+                        position: [destinoCoords.lat, destinoCoords.lng],
+                        popup: '🏁 Destino: ' + form.destino.split(',').slice(0,2).join(','),
+                        color: '#3b82f6'
+                      }
+                    ]}
+                    style={{ height: '100%', width: '100%' }}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Botão de criar */}
+          <button 
+            disabled={loading || !origemCoords || !destinoCoords || !form.clienteId}
+            style={{
+              ...styles.btn,
+              background: loading ? '#ccc' : 
+                        origemCoords && destinoCoords && form.clienteId ? COLORS.success : COLORS.primary,
+              color: 'white',
+              height: 50,
+              fontSize: 14,
+              fontWeight: 'bold',
+              opacity: loading || !origemCoords || !destinoCoords || !form.clienteId ? 0.7 : 1,
+              cursor: loading || !origemCoords || !destinoCoords || !form.clienteId ? 'not-allowed' : 'pointer'
+            }}
+          >
+            {loading ? (
+              <>
+                <div style={{
+                  width: 16,
+                  height: 16,
+                  border: '2px solid rgba(255,255,255,0.3)',
+                  borderTopColor: 'white',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite',
+                  marginRight: 8
+                }} />
+                CRIANDO PEDIDO...
+              </>
+            ) : origemCoords && destinoCoords ? (
+              '✅ CRIAR PEDIDO COM GPS CONFIRMADO'
+            ) : (
+              '📍 CONFIRME OS ENDEREÇOS PRIMEIRO'
+            )}
+          </button>
         </form>
       </div>
 
-      <div>
-        {viagens.map(v => (
-            <div key={v.id} style={{...styles.card, borderLeft: `5px solid ${v.status === 'entregue' ? COLORS.success : COLORS.primary}`}}>
-                <div style={{display:'flex', justifyContent:'space-between'}}>
-                    <div>
-                        <strong>{v.codigo}</strong> <StatusBadge status={v.status} canceled={v.canceled} />
-                        <p>{v.descricao}</p>
-                    </div>
-                    <div style={{display:'flex', gap: 5}}>
-                        <button onClick={() => onOpenDanfe(v)} style={{...styles.btn, padding:'5px 10px', background: COLORS.info, color:'white'}}>📄</button>
-                        {v.status === 'pendente' && !v.canceled && <button onClick={() => onCancel(v.id)} style={{...styles.btn, padding:'5px 10px', background: COLORS.danger, color:'white'}}>🚫</button>}
-                    </div>
-                </div>
+      {/* Lista de viagens existentes */}
+      <div style={{ marginTop: 30 }}>
+        <input 
+          style={{...styles.input, marginBottom: 20}} 
+          placeholder="🔍 Buscar viagem por código ou descrição..." 
+          value={busca} 
+          onChange={e => setBusca(e.target.value)} 
+        />
+
+        <div style={{ display: 'grid', gap: 15 }}>
+          {viagensFiltradas.length === 0 && (
+            <div style={{ textAlign: 'center', color: '#999', padding: 40 }}>
+              Nenhuma viagem encontrada.
             </div>
-        ))}
+          )}
+          {viagensFiltradas.map(v => (
+            <div key={v.id} style={{
+              ...styles.card,
+              padding: 20,
+              borderLeft: `6px solid ${
+                v.status === 'entregue' ? COLORS.success : 
+                v.canceled ? COLORS.danger : 
+                COLORS.accent
+              }`
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 5 }}>
+                    <strong style={{ fontSize: 16 }}>{v.codigo}</strong>
+                    <StatusBadge status={v.status} canceled={v.canceled} />
+                    {v.lat && v.lng && v.destLat && v.destLng && (
+                      <span style={{ 
+                        fontSize: 10, 
+                        background: '#f0f9ff', 
+                        color: '#0369a1',
+                        padding: '2px 8px',
+                        borderRadius: 4,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 4
+                      }}>
+                        📍 GPS Ativo
+                      </span>
+                    )}
+                  </div>
+                  <p style={{ margin: '0 0 10px 0', fontWeight: 500 }}>{v.descricao}</p>
+                  <div style={{ fontSize: 12, color: COLORS.textLight }}>
+                    <div style={{ marginBottom: 4 }}>
+                      <strong>📍 Origem:</strong> {v.origem}
+                    </div>
+                    <div>
+                      <strong>🏁 Destino:</strong> {v.destino}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button 
+                    onClick={() => onOpenDanfe(v)} 
+                    style={{...styles.btn, padding: '8px 12px', background: COLORS.info, color: 'white'}}
+                  >
+                    📄 NOTA
+                  </button>
+                  {v.status === 'pendente' && !v.canceled && (
+                    <button 
+                      onClick={() => onCancel(v.id)} 
+                      style={{...styles.btn, padding: '8px 12px', background: '#fee2e2', color: COLORS.danger}}
+                    >
+                      CANCELAR
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
+
+      <style jsx>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </>
   );
-}
-
-function AdminUsers({ users }) {
-    const router = useRouter();
-    const [form, setForm] = useState({ name: "", email: "", password: "", role: "cliente" });
-    const add = async (e) => {
-        e.preventDefault();
-        await criarUsuarioAction(form);
-        router.refresh();
-        alert("Usuário criado!");
-    };
-    return (
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
-            <div style={styles.card}>
-                <h3>Novo Usuário</h3>
-                <form onSubmit={add} style={{display:'flex', flexDirection:'column', gap:10}}>
-                    <input style={styles.input} placeholder="Nome" onChange={e=>setForm({...form, name:e.target.value})} />
-                    <input style={styles.input} placeholder="Email" onChange={e=>setForm({...form, email:e.target.value})} />
-                    <input style={styles.input} placeholder="Senha" type="password" onChange={e=>setForm({...form, password:e.target.value})} />
-                    <select style={styles.select} onChange={e=>setForm({...form, role:e.target.value})}>
-                        <option value="cliente">Cliente</option>
-                        <option value="motorista">Motorista</option>
-                        <option value="admin">Admin</option>
-                    </select>
-                    <button style={{...styles.btn, background: COLORS.primary, color:'white'}}>SALVAR</button>
-                </form>
-            </div>
-            <div style={styles.card}>
-                <h3>Usuários ({users.length})</h3>
-                {users.map(u => <div key={u.id} style={{borderBottom:'1px solid #eee', padding:5}}>{u.name} ({u.role})</div>)}
-            </div>
-        </div>
-    );
-}
-
-function AdminFrota({ veiculos }) {
-    const router = useRouter();
-    const [form, setForm] = useState({ placa: "", modelo: "", tipo: "Furgão" });
-    const add = async (e) => {
-        e.preventDefault();
-        await criarVeiculoAction(form);
-        router.refresh();
-        alert("Veículo criado!");
-    };
-    return (
-        <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:20}}>
-            <div style={styles.card}>
-                <h3>Novo Veículo</h3>
-                <form onSubmit={add} style={{display:'flex', flexDirection:'column', gap:10}}>
-                    <input style={styles.input} placeholder="Placa" onChange={e=>setForm({...form, placa:e.target.value})} />
-                    <input style={styles.input} placeholder="Modelo" onChange={e=>setForm({...form, modelo:e.target.value})} />
-                    <button style={{...styles.btn, background: COLORS.primary, color:'white'}}>SALVAR</button>
-                </form>
-            </div>
-            <div style={styles.card}>
-                <h3>Frota ({veiculos.length})</h3>
-                {veiculos.map(v => <div key={v.id} style={{borderBottom:'1px solid #eee', padding:5}}>{v.placa} - {v.modelo}</div>)}
-            </div>
-        </div>
-    );
-}
-
-function MotoristaDashboard({ user, viagens }) {
-  const router = useRouter();
-  const [checklistModal, setChecklistModal] = useState(null);
-  const minhas = viagens.filter(v => !v.motoristaId || v.motoristaId === user.id).filter(v => !v.canceled);
-
-  const assumir = async (id) => {
-      await atualizarViagemAction(id, { motoristaId: user.id });
-      router.refresh();
-  };
-
-  const iniciar = async (id, checklist) => {
-      await atualizarViagemAction(id, { status: 'em rota', checklist: checklist });
-      setChecklistModal(null);
-      router.refresh();
-  };
-
-  const entregar = async (id, otp) => {
-      const senha = prompt("Senha do Cliente:");
-      if(senha === otp) {
-          await atualizarViagemAction(id, { status: 'entregue' });
-          router.refresh();
-          alert("Entregue!");
-      } else alert("Senha errada");
-  };
-
-  return (
-    <div>
-        <h3>Minhas Missões</h3>
-        {checklistModal && (
-            <div style={styles.modal}>
-                <div style={{background:'white', padding:20, borderRadius:10}}>
-                    <h3>Checklist</h3>
-                    <SafetyChecklist checklist={checklistModal.checklist || {}} onUpdate={newCheck => setChecklistModal({...checklistModal, checklist: newCheck})} />
-                    <button onClick={() => iniciar(checklistModal.id, checklistModal.checklist)} style={{...styles.btn, background:COLORS.success, color:'white', marginTop:10, width:'100%'}}>CONFIRMAR E INICIAR</button>
-                    <button onClick={() => setChecklistModal(null)} style={{...styles.btn, marginTop:5, width:'100%'}}>CANCELAR</button>
-                </div>
-            </div>
-        )}
-        {minhas.map(v => (
-            <div key={v.id} style={styles.card}>
-                <div style={{display:'flex', justifyContent:'space-between'}}>
-                    <strong>{v.codigo}</strong>
-                    <StatusBadge status={v.status} />
-                </div>
-                <p>{v.descricao}</p>
-                <p style={{fontSize:12, color:'#666'}}>{v.origem} ➔ {v.destino}</p>
-                
-                <div style={{marginTop:10}}>
-                    {v.status === 'pendente' && !v.motoristaId && <button onClick={() => assumir(v.id)} style={{...styles.btn, background: COLORS.accent, color:'white', width:'100%'}}>✋ PEGAR CORRIDA</button>}
-                    {v.status === 'pendente' && v.motoristaId === user.id && <button onClick={() => setChecklistModal(v)} style={{...styles.btn, background: COLORS.info, color:'white', width:'100%'}}>🚚 INICIAR ROTA</button>}
-                    {v.status === 'em rota' && <button onClick={() => entregar(v.id, v.otp)} style={{...styles.btn, background: COLORS.success, color:'white', width:'100%'}}>📦 ENTREGAR</button>}
-                </div>
-            </div>
-        ))}
-    </div>
-  );
-}
-
-function ClienteDashboard({ user, viagens }) {
-    const minhas = viagens.filter(v => v.clienteId === user.id);
-    return (
-        <div>
-            <h3>Meus Pedidos</h3>
-            {minhas.length === 0 && <div style={styles.card}>Nenhum pedido ainda.</div>}
-            {minhas.map(v => (
-                <div key={v.id} style={styles.card}>
-                    <strong>{v.codigo}</strong> <StatusBadge status={v.status} canceled={v.canceled} />
-                    <p>{v.descricao}</p>
-                    {v.status !== 'entregue' && !v.canceled && (
-                        <div style={{background:'#fff7ed', padding:10, marginTop:10, borderRadius:5, border:'1px dashed orange', textAlign:'center'}}>
-                            <small>SENHA DE RECEBIMENTO</small>
-                            <h2>{v.otp}</h2>
-                        </div>
-                    )}
-                </div>
-            ))}
-        </div>
-    );
-}
-
-// --- UTILITÁRIOS VISUAIS E COMPONENTES AUXILIARES ---
-
-function Header({ user, logout }) {
-  return (
-    <header style={styles.header} className="no-print">
-      <div><h1 style={{margin:0}}>CAIOLOG</h1><small>{user.name} ({user.role})</small></div>
-      <button onClick={logout} style={{...styles.btn, background: COLORS.accent, color:'white'}}>SAIR</button>
-    </header>
-  );
-}
-
-function LoginScreen({ onLogin, hasUsers }) {
-  const [email, setEmail] = useState("");
-  const [pass, setPass] = useState("");
-  const [loading, setLoading] = useState(false);
-
-  const handleSeed = async () => {
-    if(confirm("Criar dados de teste (Admin, Magalu, Carlos) no Neon?")) {
-      setLoading(true);
-      await popularBancoAction();
-      alert("Banco Populado!");
-      setLoading(false);
-      window.location.reload();
-    }
-  };
-
-  return (
-    <div style={{height:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background: COLORS.primary, flexDirection: 'column', gap: 20}}>
-        <div style={{background:'white', padding:40, borderRadius:10, width:300}}>
-            <h2 style={{color: COLORS.primary}}>Login</h2>
-            {!hasUsers && <div style={{color:'orange', fontSize:12, marginBottom:10}}>⚠️ Banco Vazio</div>}
-            <input style={{...styles.input, marginBottom:10}} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-            <input style={{...styles.input, marginBottom:20}} type="password" placeholder="Senha" value={pass} onChange={e=>setPass(e.target.value)} />
-            <button onClick={()=>onLogin(email, pass)} style={{...styles.btn, width:'100%', background: COLORS.primary, color:'white'}}>ENTRAR</button>
-        </div>
-        {!hasUsers && (
-          <button onClick={handleSeed} disabled={loading} style={{color:'white', background:'none', border:'1px dashed white', padding:10, borderRadius:20}}>
-            {loading ? "Criando..." : "🚀 Popular Banco com Dados de Teste"}
-          </button>
-        )}
-    </div>
-  );
-}
-
-function StatusBadge({ status, canceled }) {
-    if(canceled) return <span style={{...styles.badge, background:'#fee2e2', color:'red'}}>CANCELADO</span>;
-    if(status==='entregue') return <span style={{...styles.badge, background:'#dcfce7', color:'green'}}>ENTREGUE</span>;
-    if(status==='em rota') return <span style={{...styles.badge, background:'#dbeafe', color:'blue'}}>EM ROTA</span>;
-    return <span style={{...styles.badge, background:'#ffedd5', color:'orange'}}>PENDENTE</span>;
-}
-
-function CaiologAds() {
-    return <div className="no-print" style={{marginTop:50, textAlign:'center', opacity:0.5, fontSize:12}}>🚀 Sistema Potencializado por Vercel + Neon DB</div>;
-}
-
-function DanfeRealista({ viagem, users, veiculos, onClose }) {
-    const cliente = users.find(u => u.id === viagem.clienteId) || {};
-    const nfeNum = `000.${String(viagem.id).padStart(3, '0')}.001`;
-    return (
-        <div className="danfe-overlay">
-            <div className="no-print" style={{background:'#333', width:'210mm', padding:10, color:'white', display:'flex', justifyContent:'space-between'}}>
-                <span>Visualização de Impressão</span>
-                <button onClick={onClose} style={{background:'red', border:'none', color:'white', padding:5}}>Fechar</button>
-            </div>
-            <div className="printable-area" style={{background:'white', width:'210mm', minHeight:'297mm', padding:'10mm', color:'black'}}>
-                <div style={{border:'1px solid black', padding:10, marginBottom:10}}>
-                    <h1 style={{margin:0}}>DANFE - CAIOLOG</h1>
-                    <p style={{margin:0}}>Nota Fiscal Eletrônica - Nº {nfeNum}</p>
-                    <p style={{margin:0, fontSize:10}}>Chave de Acesso: {viagem.codigo} - {viagem.otp}</p>
-                </div>
-                <div style={{border:'1px solid black', padding:10}}>
-                    <strong>Destinatário:</strong> {cliente.name} - {cliente.cnpj}<br/>
-                    <strong>Origem:</strong> {viagem.origem} <br/>
-                    <strong>Destino:</strong> {viagem.destino} <br/>
-                    <strong>Valor Total:</strong> {formatMoney(viagem.valor)}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function CancelModal({ onClose, onConfirm }) {
-    const [r, setR] = useState("");
-    return (
-        <div style={styles.modal}>
-            <div style={{background:'white', padding:20, borderRadius:8}}>
-                <h3>Cancelar?</h3>
-                <input style={styles.input} placeholder="Motivo" onChange={e=>setR(e.target.value)} />
-                <div style={{display:'flex', gap:10, marginTop:10}}>
-                    <button onClick={()=>onConfirm(r)} style={{...styles.btn, background:'red', color:'white'}}>Confirmar</button>
-                    <button onClick={onClose} style={styles.btn}>Voltar</button>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function ChatWidget({ user, viagens, messages }) {
-    const router = useRouter();
-    const [open, setOpen] = useState(false);
-    const [msg, setMsg] = useState("");
-    const [active, setActive] = useState(null);
-    const msgs = active ? messages.filter(m => m.viagemId === parseInt(active)) : [];
-
-    const send = async (e) => {
-        e.preventDefault();
-        if(!msg || !active) return;
-        await enviarMensagemAction(active, user.id, msg);
-        setMsg("");
-        router.refresh();
-    }
-
-    if(!open) return <button style={styles.chatBtn} onClick={()=>setOpen(true)}>💬</button>;
-
-    return (
-        <div style={styles.chatWindow}>
-            <div style={{background: COLORS.primary, color:'white', padding:10, display:'flex', justifyContent:'space-between'}}>
-                <span>Chat</span>
-                <button onClick={()=>setOpen(false)} style={{background:'none', border:'none', color:'white'}}>X</button>
-            </div>
-            <div style={{padding:10, borderBottom:'1px solid #eee'}}>
-                <select style={styles.select} onChange={e=>setActive(e.target.value)} value={active || ""}>
-                    <option value="">Selecione Viagem...</option>
-                    {viagens.map(v => <option key={v.id} value={v.id}>{v.codigo}</option>)}
-                </select>
-            </div>
-            <div style={{flex:1, overflowY:'auto', padding:10, background:'#f9f9f9'}}>
-                {msgs.map(m => (
-                    <div key={m.id} style={{textAlign: m.senderId === user.id ? 'right' : 'left', marginBottom:5}}>
-                        <div style={{background: m.senderId === user.id ? '#dbeafe' : 'white', padding:8, borderRadius:5, display:'inline-block', border:'1px solid #eee'}}>
-                            <small style={{fontWeight:'bold'}}>{m.senderName}</small><br/>
-                            {m.text}
-                        </div>
-                    </div>
-                ))}
-            </div>
-            <form onSubmit={send} style={{display:'flex'}}>
-                <input style={{...styles.input, marginBottom:0, borderRadius:0}} value={msg} onChange={e=>setMsg(e.target.value)} placeholder="Digite..." />
-                <button style={{...styles.btn, borderRadius:0, background: COLORS.primary, color:'white'}}>&gt;</button>
-            </form>  
-        </div>
-    );
 }
