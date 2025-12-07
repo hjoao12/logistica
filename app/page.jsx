@@ -571,8 +571,8 @@ function ChatWidget({ user, viagens, messages }) {
             </div>
             <form onSubmit={send} style={{display:'flex'}}>
                 <input style={{...styles.input, marginBottom:0, borderRadius:0}} value={msg} onChange={e=>setMsg(e.target.value)} placeholder="Digite..." />
-                <button style={{...styles.btn, borderRadius:0, background: COLORS.primary, color:'white'}}>></button>
-            </form>
+                <button style={{...styles.btn, borderRadius:0, background: COLORS.primary, color:'white'}}>&gt;</button>
+            </form>  
         </div>
     );
 }
