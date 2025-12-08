@@ -1,0 +1,82 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id       Int       @id @default(autoincrement())
+  name     String
+  email    String    @unique
+  password String
+  role     String    // "admin", "cliente", "motorista"
+  company  String?
+  cnpj     String?
+  
+  // Relacionamentos
+  viagensCliente   Viagem[]  @relation("ClienteViagem")
+  viagensMotorista Viagem[]  @relation("MotoristaViagem")
+  messages         Message[]
+}
+
+model Viagem {
+  id          Int      @id @default(autoincrement())
+  codigo      String
+  descricao   String
+  valor       Float
+  origem      String
+  destino     String
+  lat         Float?
+  lng         Float?
+  destLat     Float?
+  destLng     Float?
+  otp         String?
+  status      String   @default("pendente")
+  canceled    Boolean  @default(false)
+  rating      Int?
+  feedback    String?
+  
+  // Campos JSON para histórico e checklist
+  checklist   String?  // SQLite não suporta JSON nativo facilmente, usaremos String ou suporta se for Postgres
+  // DICA: Se usar SQLite, o prisma trata JSON como String em versões antigas ou precisa de setup. 
+  // Para simplificar, vou deixar como String, mas o ideal em Postgres é Json.
+  history     String?  // Armazena o JSON do histórico como string se for SQLite
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  clienteId   Int
+  cliente     User     @relation("ClienteViagem", fields: [clienteId], references: [id])
+  
+  motoristaId Int?
+  motorista   User?    @relation("MotoristaViagem", fields: [motoristaId], references: [id])
+  
+  messages    Message[]
+}
+
+model Veiculo {
+  id         Int     @id @default(autoincrement())
+  placa      String  @unique
+  modelo     String
+  tipo       String
+  capacidade String
+  status     String
+  ano        Int
+}
+
+model Message {
+  id        Int      @id @default(autoincrement())
+  text      String
+  timestamp DateTime @default(now())
+  
+  viagemId  Int
+  viagem    Viagem   @relation(fields: [viagemId], references: [id])
+  
+  senderId  Int
+  sender    User     @relation(fields: [senderId], references: [id])
+}
